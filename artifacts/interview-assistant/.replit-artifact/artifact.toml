@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Interview Assistant"
+version = "1.0.0"
+id = "artifacts/interview-assistant"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22987
+
+[services.development]
+run = "pnpm --filter @workspace/interview-assistant run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/interview-assistant", "run", "build" ]
+publicDir = "artifacts/interview-assistant/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22987"
+BASE_PATH = "/"
