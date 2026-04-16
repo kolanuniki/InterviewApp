@@ -58,7 +58,7 @@ export default function SetupPage() {
           // Send to backend for PDF/DOCX extraction
           const formData = new FormData();
           formData.append("file", file);
-          const resp = await fetch(`${BASE}/api/interview/parse-document`, {
+          const resp = await fetch("https://my-interview-backend.onrender.com/api/interview/parse-document", {
             method: "POST",
             body: formData,
           });
