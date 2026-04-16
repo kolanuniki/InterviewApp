@@ -2,6 +2,7 @@ import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ApiProvider } from "@workspace/api-client-react"; // <--- Add this import
 import SetupPage from "@/pages/SetupPage";
 import SessionPage from "@/pages/SessionPage";
 import NotFound from "@/pages/not-found";
@@ -21,12 +22,15 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
+      {/* Add the ApiProvider below and give it your backend URL */}
+      <ApiProvider url="https://my-interview-backend.onrender.com">
+        <TooltipProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <Router />
+          </WouterRouter>
+          <Toaster />
+        </TooltipProvider>
+      </ApiProvider>
     </QueryClientProvider>
   );
 }
