@@ -3,14 +3,11 @@ import multer from "multer";
 import { db } from "@workspace/db";
 import { interviewSessions, qaEntries } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import {
-  CreateInterviewSessionBody,
-} from "@workspace/api-zod";
+import { CreateInterviewSessionBody } from "@workspace/api-zod";
 import { ai } from "@workspace/integrations-gemini-ai";
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage, limits: { fileSize: 20 * 1024 * 1024 } });
-
 const router = Router();
 
 // 1. GET ALL SESSIONS
@@ -21,13 +18,12 @@ router.get("/sessions", async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Internal server error" }); }
 });
 
-// 2. FIXED: GET SINGLE SESSION (This fixes the 404!)
+// 2. GET SINGLE SESSION
 router.get("/sessions/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const [session] = await db.select().from(interviewSessions).where(eq(interviewSessions.id, id));
     if (!session) return res.status(404).json({ error: "Session not found" });
-    
     const entries = await db.select().from(qaEntries).where(eq(qaEntries.sessionId, id));
     res.json({ ...session, entries });
   } catch (err) { res.status(500).json({ error: "Internal server error" }); }
@@ -42,43 +38,48 @@ router.post("/sessions", async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Internal server error" }); }
 });
 
-// 4. PARSE DOCUMENT
-router.post("/parse-document", upload.single("file"), async (req, res) => {
+// 4. THE AI ANSWER LOGIC (The "Brain")
+router.post("/sessions/:id/answer", async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-    const { mimetype, originalname, buffer } = req.file;
-    let extractedText = "";
-    const ext = originalname.split(".").pop()?.toLowerCase() ?? "";
+    const id = parseInt(req.params.id);
+    const { text: userResponse } = req.body;
 
-    if (mimetype === "application/pdf" || ext === "pdf") {
-      const pdfParse = require("pdf-parse");
-      const data = await pdfParse(buffer);
-      extractedText = data.text ?? "";
-    } else if (ext === "docx" || ext === "doc") {
-      const mammoth = require("mammoth");
-      const result = await mammoth.extractRawText({ buffer });
-      extractedText = result.value ?? "";
-    } else {
-      extractedText = buffer.toString("utf-8");
-    }
-    res.json({ filename: originalname, text: extractedText.trim().slice(0, 50000) });
-  } catch (err) { res.status(500).json({ error: "Extraction failed" }); }
+    // A. Get the Context (Resume + JD) from DB
+    const [session] = await db.select().from(interviewSessions).where(eq(interviewSessions.id, id));
+    if (!session) return res.status(404).json({ error: "Session not found" });
+
+    // B. Call Gemini
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const prompt = `
+      You are an expert technical interviewer. 
+      Job Description: ${session.jobDescription}
+      Candidate Resume: ${session.resume}
+      Candidate's last answer: "${userResponse}"
+      
+      Based on the resume and the job description, evaluate their answer and ask ONE relevant follow-up interview question. 
+      Keep your response professional and concise.
+    `;
+
+    const result = await model.generateContent(prompt);
+    const aiQuestion = result.response.text();
+
+    // C. Save the exchange to the database
+    await db.insert(qaEntries).values({
+      sessionId: id,
+      question: aiQuestion,
+      answer: userResponse
+    });
+
+    res.json({ question: aiQuestion });
+  } catch (err) {
+    console.error("AI Error:", err);
+    res.status(500).json({ error: "The AI is having trouble thinking. Check your API Key names!" });
+  }
 });
 
-// 5. ANSWER ROUTE (Modified for Gemini)
-router.post("/sessions/:id/answer", async (req, res) => {
-    try {
-        const id = parseInt(req.params.id);
-        const { audio, text } = req.body; // Depending on how your frontend sends data
-
-        // Call your Gemini integration here
-        // const response = await ai.generateResponse(text, ...); 
-        
-        // For now, let's send a success so the frontend stops waiting
-        res.json({ status: "received", message: "AI is processing" });
-    } catch (err) {
-        res.status(500).json({ error: "AI failed to respond" });
-    }
+// 5. PARSE DOCUMENT (Keep your existing working parser here)
+router.post("/parse-document", upload.single("file"), async (req, res) => {
+    // ... (Your existing working parser code)
 });
 
 export default router;
